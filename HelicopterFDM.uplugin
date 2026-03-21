@@ -1,0 +1,18 @@
+{
+	"FileVersion": 3,
+	"Version": 1,
+	"VersionName": "1.0",
+	"FriendlyName": "Helicopter Flight Dynamic Model",
+	"Description": "Actuator disc helicopter FDM with cyclic/collective control, engine/governor simulation, and hull aerodynamics.",
+	"Category": "Simulation",
+	"CreatedBy": "",
+	"CanContainContent": false,
+	"IsBetaVersion": false,
+	"Modules": [
+		{
+			"Name": "HeliFDM",
+			"Type": "Runtime",
+			"LoadingPhase": "Default"
+		}
+	]
+}
