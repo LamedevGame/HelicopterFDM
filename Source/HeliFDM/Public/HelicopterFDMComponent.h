@@ -38,6 +38,11 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM")
 	float FieldElevationFeet = 0.0f;
 
+	/** Altitude (ft MSL) where rotor thrust + engine power drop to ~37% of sea-level value.
+	 *  Defines natural service ceiling. Apache ≈ 15,000 ft, light heli ≈ 12,000 ft, heavy lift ≈ 10,000 ft. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM", meta=(ClampMin="3000", ClampMax="30000"))
+	float ServiceCeilingFeet = 15000.0f;
+
 	// ============================================
 	// PHYSICS
 	// ============================================
@@ -58,10 +63,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Main Rotor", meta=(ClampMin="0.5", ClampMax="3.0"))
 	double ThrustMultiplier = 1.25;
 
-	/** Fraction of thrust that becomes reactive torque (0.05-0.15) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Main Rotor", meta=(ClampMin="0.01", ClampMax="0.3"))
-	double TorqueFraction = 0.07;
-
 	/** Thrust response time (seconds, lower = snappier, 0 = instant) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Main Rotor", meta=(ClampMin="0", ClampMax="0.5"))
 	double ThrustResponseTime = 0.05;
@@ -74,9 +75,9 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Main Rotor", meta=(ClampMin="1"))
 	double MainRotorRPMNominal = 394.0;
 
-	/** Main rotor direction: +1 = CCW from above (US), -1 = CW */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Main Rotor", meta=(ClampMin="-1", ClampMax="1"))
-	double MainRotorDirection = -1.0;
+	/** Main rotor spin direction. true = CW from above (Mil/Eurocopter, default), false = CCW (US Bell/Sikorsky). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Main Rotor")
+	bool bMainRotorClockwise = true;
 
 	// ============================================
 	// TAIL ROTOR
@@ -90,21 +91,36 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Tail Rotor", meta=(ClampMin="0.1"))
 	double TailRotorGearRatio = 5.32;
 
-	/** Pedal yaw authority — how much yaw force pedals produce (multiplier) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Tail Rotor", meta=(ClampMin="0.1", ClampMax="5.0"))
-	double PedalYawAuthority = 1.2;
+	/** Pedal authority — fraction of available tail rotor thrust used at full pedal. 1.0 = full physical thrust. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Tail Rotor", meta=(ClampMin="0.1", ClampMax="2.0"))
+	double PedalYawAuthority = 1.0;
+
+	/** Enable translating tendency — tail rotor thrust pushes body sideways (realistic).
+	 *  Disable for arcade feel without lateral drift on pedal input. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Tail Rotor")
+	bool bEnableTranslatingTendency = true;
+
+	// ============================================
+	// FORWARD FLIGHT
+	// ============================================
+
+	/** Translational lift bonus at full ETL — peak thrust multiplier above hover (0.10–0.15 typical).
+	 *  Felt as the "kick" of accelerating through ~15–25 knots. Set to 0 to disable. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Forward Flight", meta=(ClampMin="0", ClampMax="0.5"))
+	float ETLBoost = 0.12f;
+
+	/** Enable Vortex Ring State — fast descent at low forward speed loses thrust (settling with power).
+	 *  Recovery: drop nose, gain forward speed. Realistic hazard, replaces arbitrary descent caps. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Forward Flight")
+	bool bEnableVRS = true;
+
+	/** Peak VRS thrust loss when fully developed (descending hard, near-zero forward speed). 0.3 = 30% drop. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Forward Flight", meta=(ClampMin="0", ClampMax="0.7"))
+	float VRSStrength = 0.3f;
 
 	// ============================================
 	// ENGINE
 	// ============================================
-
-	/** Engine idle RPM */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Engine", meta=(ClampMin="0"))
-	double EngineIdleRPM = 550.0;
-
-	/** Engine max RPM */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Engine", meta=(ClampMin="1"))
-	double EngineMaxRPM = 2500.0;
 
 	/** Engine max power (HP) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Engine", meta=(ClampMin="1"))
@@ -118,10 +134,6 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Engine", meta=(ClampMin="1"))
 	double EngineMomentOfInertia = 950.0;
 
-	/** Governor base throttle at nominal RPM with zero collective (0.3-0.6) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Engine", meta=(ClampMin="0.1", ClampMax="0.8"))
-	double GovernorBaseThrottle = 0.35;
-
 	/** Time to spool up from zero to nominal (seconds) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Engine", meta=(ClampMin="0.1", ClampMax="60"))
 	float EngineSpoolUpTime = 12.0f;
@@ -134,21 +146,23 @@ public:
 	// HULL AERODYNAMICS
 	// ============================================
 
-	/** Fuselage reference area for drag (m^2) */
+	/** Forward fuselage drag area Cd·A (m²). Drag = ½·ρ·V²·CdA. Typical light heli ≈ 1.5, Apache ≈ 6. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Hull", meta=(ClampMin="0"))
-	double HullReferenceArea = 5.0;
+	double HullDragCdA = 1.75;
 
-	/** Fuselage parasitic drag coefficient */
+	/** Landing gear drag area Cd·A (m²). Set 0 for retractable gear up. */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Hull", meta=(ClampMin="0"))
-	double HullDragCoefficient = 0.35;
+	double LandingGearDragCdA = 0.30;
 
-	/** Landing gear drag coefficient */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Hull", meta=(ClampMin="0"))
-	double LandingGearDragCoefficient = 0.25;
+	/** Lateral drag multiplier — fuselage is much draggier sideways than forward.
+	 *  1.0 = isotropic. 2.5–3.5 typical for real fuselages. Drives skid arrest in pedal turns. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Hull", meta=(ClampMin="1.0", ClampMax="6.0"))
+	float LateralDragMultiplier = 3.0f;
 
-	/** Landing gear reference area (m^2) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Hull", meta=(ClampMin="0"))
-	double LandingGearReferenceArea = 1.2;
+	/** Weather-cock yaw stability — restoring moment that aligns nose with airflow in forward flight.
+	 *  Felt as nose pulling back to direction of motion during pedal-induced skids. 0 = disabled. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Hull", meta=(ClampMin="0", ClampMax="2"))
+	float SideslipYawGain = 0.5f;
 
 	// ============================================
 	// SAS (Stability Augmentation System)
@@ -170,21 +184,17 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|SAS", meta=(ClampMin="0", ClampMax="10"))
 	float SAS_AttitudeHoldStrength = 2.5f;
 
-	/** Cyclic input deadzone for attitude hold activation */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|SAS", meta=(ClampMin="0", ClampMax="0.5"))
-	float SAS_AttitudeHoldDeadzone = 0.1f;
+	/** Auto-compensate vertical lift loss when body is tilted (banking/pitching).
+	 *  ON (default): heli holds altitude through banked turns automatically (arcade feel).
+	 *  OFF: pilot must add collective during maneuvers (realistic). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|SAS")
+	bool bAutoCollectiveCompensation = true;
 
-	/** Progressive gain — stronger correction at larger angles */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|SAS", meta=(ClampMin="0", ClampMax="5"))
-	float SAS_AttitudeHoldProgressive = 1.5f;
-
-	/** Minimum cyclic authority as fraction of hover thrust [0-0.3] */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|SAS", meta=(ClampMin="0", ClampMax="0.3"))
-	float MinCyclicAuthorityFraction = 0.15f;
-
-	/** Maximum cyclic angular acceleration (rad/s^2) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|SAS", meta=(ClampMin="0.5", ClampMax="10"))
-	float MaxCyclicAcceleration = 3.0f;
+	/** Auto-trim tail rotor to balance main rotor reactive torque (eliminates need for constant pedal).
+	 *  ON: hovers without pedal input, but rapid collective pulls still cause brief yaw kick (realistic).
+	 *  OFF: pilot must hold pedal continuously to counter reactive torque (hardcore). */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|SAS")
+	bool bEnableAutoTrim = true;
 
 	// ============================================
 	// VELOCITY LIMITS
@@ -193,22 +203,6 @@ public:
 	/** Maximum climb rate before damping kicks in (m/s) */
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Velocity Limits", meta=(ClampMin="1", ClampMax="30"))
 	float MaxClimbRate = 8.0f;
-
-	/** Maximum descent rate before damping kicks in (m/s) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Velocity Limits", meta=(ClampMin="1", ClampMax="30"))
-	float MaxDescentRate = 12.0f;
-
-	/** Vertical speed damping strength (multiplier on mass) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Velocity Limits", meta=(ClampMin="0", ClampMax="10"))
-	float VerticalDampingGain = 2.0f;
-
-	/** Lateral drift damping strength (multiplier on mass) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Velocity Limits", meta=(ClampMin="0", ClampMax="10"))
-	float LateralDampingGain = 2.0f;
-
-	/** Backward flight damping strength (multiplier on mass) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Velocity Limits", meta=(ClampMin="0", ClampMax="10"))
-	float BackwardDampingGain = 1.5f;
 
 	// ============================================
 	// ENVELOPE PROTECTION
@@ -222,49 +216,13 @@ public:
 	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Envelope", meta=(ClampMin="15", ClampMax="80"))
 	float EnvelopeMaxRoll = 45.0f;
 
-	/** Envelope pushback strength */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Envelope", meta=(ClampMin="0.5", ClampMax="20"))
-	float EnvelopeStrength = 8.0f;
-
 	// ============================================
 	// INPUT
 	// ============================================
 
-	/** Cyclic pitch sensitivity (forward/backward) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Input", meta=(ClampMin="0.01", ClampMax="2.0"))
-	float CyclicSensitivityPitch = 1.0f;
-
-	/** Cyclic roll sensitivity (left/right) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Input", meta=(ClampMin="0.01", ClampMax="2.0"))
-	float CyclicSensitivityRoll = 1.0f;
-
-	/** Pedal input sensitivity */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Input", meta=(ClampMin="0.01", ClampMax="2.0"))
-	float PedalSensitivity = 1.0f;
-
-	/** Collective input sensitivity */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Input", meta=(ClampMin="0.01", ClampMax="2.0"))
-	float CollectiveSensitivity = 1.0f;
-
-	/** Cyclic input smoothing time constant (seconds, lower = more responsive) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Input", meta=(ClampMin="0.01", ClampMax="1.0"))
-	float InputSmoothingCyclic = 0.12f;
-
-	/** Pedal input smoothing time constant (seconds) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Input", meta=(ClampMin="0.01", ClampMax="1.0"))
-	float InputSmoothingPedals = 0.2f;
-
-	/** Collective input smoothing time constant (seconds) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Input", meta=(ClampMin="0.01", ClampMax="1.0"))
-	float InputSmoothingCollective = 0.05f;
-
-	// ============================================
-	// OPTIMIZATION
-	// ============================================
-
-	/** How often to update ground height via line trace (seconds) */
-	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Optimization", meta=(ClampMin="0.01", ClampMax="1.0"))
-	float GroundTraceInterval = 0.2f;
+	/** Player input tuning — sensitivity and smoothing per axis. */
+	UPROPERTY(EditAnywhere, BlueprintReadWrite, Category = "HeliFDM|Input")
+	FInputTuning InputTuning;
 
 	// ============================================
 	// ENGINE CONTROL API
@@ -360,6 +318,10 @@ public:
 	UFUNCTION(BlueprintPure, Category = "HeliFDM|State")
 	float GetGroundHeight() const;
 
+	/** Advance ratio (V_forward / V_tip) — useful for HUD and tuning forward-flight effects */
+	UFUNCTION(BlueprintPure, Category = "HeliFDM|State")
+	float GetAdvanceRatio() const { return static_cast<float>(AdvanceRatioCached); }
+
 protected:
 	// ============================================
 	// INTERNAL STATE
@@ -404,8 +366,11 @@ protected:
 	double GroundHeight = 1000.0;
 	float GroundTraceTimer = 0.0f;
 
-	// Telemetry log timer
-	double TelemetryTimer = 0.0;
+	// Forward-flight cache
+	double AdvanceRatioCached = 0.0;
+
+	// Yaw auto-trim — moment (N·m) that cancels reactive torque in steady state
+	double TailTrimYawMoment = 0.0;
 
 	// ============================================
 	// SIMULATION STEPS
@@ -418,4 +383,5 @@ protected:
 	void SolveRotorDisc();
 	void CommitForcesAndTorques();
 	double EvaluateIGEFactor();
+	double GetAltitudeFactor() const;
 };
