@@ -1,14 +1,14 @@
 # Helicopter FDM Plugin
 
 Game-oriented helicopter flight dynamics model for Unreal Engine 5. A single Blueprint component drives realistic-feeling helicopter physics with intuitive parameters.
+<img width="2559" height="1439" alt="image" src="https://github.com/user-attachments/assets/209500b8-14eb-414e-9e52-e701381c5262" />
 <img width="2559" height="1439" alt="image" src="https://github.com/user-attachments/assets/99dafcae-4a42-4d7c-8b74-605548fcf207" />
-<img width="2559" height="1439" alt="image" src="https://github.com/user-attachments/assets/f9d5dd0d-c567-4a49-b917-9b6e24914984" />
 <img width="747" height="346" alt="image" src="https://github.com/user-attachments/assets/367b6336-2878-46ad-bea9-285e4e37fd77" />
 <img width="374" height="169" alt="image" src="https://github.com/user-attachments/assets/6d2d8398-1b91-470b-a19e-0c4ee27283a6" />
+https://www.youtube.com/watch?v=-DTiBg89Ciw
+https://www.youtube.com/watch?v=XMjCHSxUgaM
 
-https://www.youtube.com/watch?v=0exTaOAsJRo
-
-Test Build Link: https://drive.google.com/file/d/1NSQLvvOrSDtkSRo9yvpTUv1pziJNpIC-/view?usp=sharing
+Test Build Link: https://drive.google.com/file/d/1_ncZY7oQQvUKymVrNWnKjLd-f1qtNKfH/view?usp=sharing
 
 ## Tech Stack
 
